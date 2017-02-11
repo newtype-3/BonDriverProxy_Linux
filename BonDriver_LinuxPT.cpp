@@ -1,5 +1,8 @@
 #include "BonDriver_LinuxPT.h"
 #include "plex.cpp"
+#ifdef HAVE_LIBARIBB25
+#include "B25Decoder.h"
+#endif
 
 namespace BonDriver_LinuxPT {
 
@@ -13,6 +16,11 @@ static BOOL g_UseServiceID;
 static DWORD g_Crc32Table[256];
 static BOOL g_ModPMT;
 static DWORD g_dwDelFlag;
+
+#ifdef HAVE_LIBARIBB25
+static BOOL g_b25_enable = FALSE;
+static B25Decoder g_b25;
+#endif
 
 static int Convert(char *src, char *dst, size_t dstsize)
 {
@@ -96,6 +104,14 @@ static int Init()
 	BOOL bsFlag = FALSE;
 	BOOL bmFlag = FALSE;
 	BOOL bdelFlag = FALSE;
+#ifdef HAVE_LIBARIBB25
+	struct {
+		unsigned b25:1;
+		unsigned strip:1;
+		unsigned emm:1;
+		unsigned multi2round:1;
+	} b25flags = {0};
+#endif
 	while (::fgets(buf, sizeof(buf), fp))
 	{
 		if (buf[0] == ';')
@@ -206,6 +222,28 @@ static int Init()
 			delete[] pp;
 			bdelFlag = TRUE;
 		}
+#ifdef HAVE_LIBARIBB25
+		else if (!b25flags.b25 && IsTagMatch(buf, "#B25", &p))
+		{
+			g_b25_enable = ::atoi(p);
+			b25flags.b25 = 1;
+		}
+		else if (!b25flags.strip && IsTagMatch(buf, "#STRIP", &p))
+		{
+			B25Decoder::strip = ::atoi(p);
+			b25flags.strip = 1;
+		}
+		else if (!b25flags.emm && IsTagMatch(buf, "#EMM", &p))
+		{
+			B25Decoder::emm_proc = ::atoi(p);
+			b25flags.emm = 1;
+		}
+		else if (!b25flags.multi2round && IsTagMatch(buf, "#MULTI2ROUND", &p))
+		{
+			B25Decoder::multi2_round = ::atoi(p);
+			b25flags.multi2round = 1;
+		}
+#endif
 		else
 		{
 			int n = 0;
@@ -363,6 +401,10 @@ const BOOL cBonDriverLinuxPT::OpenTuner(void)
 	if (g_UseLNB && (g_Type == 0) && (::ioctl(m_fd, LNB_ENABLE, 2) < 0))
 		::fprintf(stderr, "LNB ON failed: %s\n", g_Device);
 	m_bTuner = TRUE;
+#ifdef HAVE_LIBARIBB25
+	if (g_b25_enable)
+		g_b25.init();
+#endif
 	return TRUE;
 }
 
@@ -454,6 +496,10 @@ const BOOL cBonDriverLinuxPT::GetTsStream(BYTE **ppDst, DWORD *pdwSize, DWORD *p
 			b = FALSE;
 		}
 	}
+#ifdef HAVE_LIBARIBB25
+	if (b)
+		g_b25.decode(*ppDst, *pdwSize, ppDst, pdwSize);
+#endif
 	return b;
 }
 
@@ -544,6 +590,9 @@ const BOOL cBonDriverLinuxPT::SetChannel(const DWORD dwSpace, const DWORD dwChan
 			::fprintf(stderr, "SetChannel() ioctl(SET_CHANNEL) error: %s\n", g_Device);
 			goto err;
 		}
+#ifdef HAVE_LIBARIBB25
+ 		g_b25.reset();
+#endif
 	}
 
 	{

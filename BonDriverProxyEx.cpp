@@ -1,5 +1,10 @@
 #include "BonDriverProxyEx.h"
 
+#ifdef HAVE_LIBARIBB25
+#include <getopt.h>
+static BOOL g_b25_enable = FALSE;
+#endif
+
 namespace BonDriverProxyEx {
 
 #ifdef DEBUG
@@ -64,6 +69,38 @@ static void DeleteSpace(char *dst, const char *src)
 
 static int Init(int ac, char *av[])
 {
+#ifdef HAVE_LIBARIBB25
+	static const struct option options[] = {
+		{"b25",         no_argument, &g_b25_enable, TRUE},
+		{"strip",       no_argument, &B25Decoder::strip, 1},
+		{"emm",         no_argument, &B25Decoder::emm_proc, 1},
+		{"round", required_argument, NULL, 'r'},
+		{0}
+	};
+	int opt;
+
+	while ((opt = getopt_long(ac, av, "", options, NULL)) != -1)
+	{
+		switch (opt)
+		{
+		case 0:		// long options
+			break;
+		case 'r':	// multi2 round
+			B25Decoder::multi2_round = strtoul(optarg, NULL, 10);
+			break;
+		default:
+			return -1;
+		}
+	}
+
+	if (optind > 1)
+	{
+		int i = optind, j = 1;
+		while (i < ac)
+			av[j++] = av[i++];
+		ac -= optind - 1;
+	}
+#endif
 	if (ac > 1)
 	{
 		if (*av[1] == '-')
@@ -141,6 +178,28 @@ static int Init(int ac, char *av[])
 			g_TsPacketBufSize = ::atoi(buf2 + 17);
 			continue;
 		}
+#ifdef HAVE_LIBARIBB25
+		if ((::strncmp(buf2, "B25=", 4) == 0) && (::strlen(buf2) > 4))
+		{
+			g_b25_enable = ::atoi(buf2 + 4);
+			continue;
+		}
+		if ((::strncmp(buf2, "STRIP=", 6) == 0) && (::strlen(buf2) > 6))
+		{
+			B25Decoder::strip = ::atoi(buf2 + 6);
+			continue;
+		}
+		if ((::strncmp(buf2, "EMM=", 4) == 0) && (::strlen(buf2) > 4))
+		{
+			B25Decoder::emm_proc = ::atoi(buf2 + 4);
+			continue;
+		}
+		if ((::strncmp(buf2, "MULTI2ROUND=", 12) == 0) && (::strlen(buf2) > 12))
+		{
+			B25Decoder::multi2_round = strtoul(buf2 + 12, NULL, 10);
+			continue;
+		}
+#endif
 
 		// ;BONDRIVER
 		// 00=PT-T;./BonDriver_LinuxPT-T0.so;./BonDriver_LinuxPT-T1.so
@@ -960,6 +1019,10 @@ DWORD cProxyServerEx::Process()
 									m_pTsReaderArg = new stTsReaderArg();
 									m_pTsReaderArg->TsReceiversList.push_back(this);
 									m_pTsReaderArg->pIBon = m_pIBon;
+#ifdef HAVE_LIBARIBB25
+									if (g_b25_enable)
+										m_pTsReaderArg->b25.init();
+#endif
 									if (::pthread_create(&m_hTsRead, NULL, cProxyServerEx::TsReader, m_pTsReaderArg))
 									{
 										m_hTsRead = 0;
@@ -1339,12 +1402,24 @@ void *cProxyServerEx::TsReader(LPVOID pv)
 			now = (tv.tv_sec * 1000) + (tv.tv_usec / 1000);
 			if (((now - before) >= 1000) || ChannelChanged)
 			{
+#ifdef HAVE_LIBARIBB25
+				if (ChannelChanged)
+					pArg->b25.reset();
+#endif
 				fSignalLevel = pIBon->GetSignalLevel();
 				before = now;
 				ChannelChanged = FALSE;
 			}
 			if (pIBon->GetTsStream(&pBuf, &dwSize, &dwRemain) && (dwSize != 0))
 			{
+#ifdef HAVE_LIBARIBB25
+				if (g_b25_enable)
+				{
+					pArg->b25.decode(pBuf, dwSize, &pBuf, &dwSize);
+					if (dwSize == 0)
+						goto next;
+				}
+#endif
 				if ((pos + dwSize) < TsPacketBufSize)
 				{
 					::memcpy(&pTsBuf[pos], pBuf, dwSize);
@@ -1386,6 +1461,9 @@ void *cProxyServerEx::TsReader(LPVOID pv)
 				}
 			}
 		}
+#ifdef HAVE_LIBARIBB25
+	next:
+#endif
 		if (dwRemain == 0)
 			::nanosleep(&ts, NULL);
 	}
@@ -1888,7 +1966,12 @@ int main(int argc, char *argv[])
 {
 	if (BonDriverProxyEx::Init(argc, argv) != 0)
 	{
+#ifdef HAVE_LIBARIBB25
+		fprintf(stderr, "usage: %s [--b25 [--strip] [--emm] [--round N]] "
+				"address port (opentuner_return_delay_time packet_fifo_size tspacket_bufsize)\ne.g. $ %s 192.168.0.100 1192\n", argv[0],argv[0]);
+#else
 		fprintf(stderr, "usage: %s address port (opentuner_return_delay_time packet_fifo_size tspacket_bufsize)\ne.g. $ %s 192.168.0.100 1192\n", argv[0],argv[0]);
+#endif
 		return 0;
 	}
 

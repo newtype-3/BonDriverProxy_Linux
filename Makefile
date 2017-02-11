@@ -42,6 +42,15 @@ BonDriver_Splitter.$(EXT): BonDriver_Splitter.$(EXT).o
 sample: sample.o
 	$(CXX) $(CXXFLAGS) -rdynamic -o $@ $^ $(LIBS)
 
+ifdef B25
+CPPFLAGS += -DHAVE_LIBARIBB25
+LIBS += -laribb25
+SRCS += B25Decoder.cpp
+BonDriverProxy BonDriverProxyEx BonDriver_LinuxPT.$(EXT) BonDriver_DVB.$(EXT): B25Decoder.o
+B25Decoder.o: B25Decoder.cpp
+	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $(ADDCOMPILEFLAGS) -fPIC -c -o $@ $<
+endif
+
 util:
 	@cd util; make
 

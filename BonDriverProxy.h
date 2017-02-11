@@ -23,6 +23,9 @@
 #include <queue>
 #include "typedef.h"
 #include "IBonDriver3.h"
+#ifdef HAVE_LIBARIBB25
+#include "B25Decoder.h"
+#endif
 
 #if __APPLE__
 #undef daemon
@@ -67,6 +70,9 @@ struct stTsReaderArg {
 	std::list<cProxyServer *> TsReceiversList;
 	std::list<cProxyServer *> WaitExclusivePrivList;
 	cCriticalSection TsLock;
+#ifdef HAVE_LIBARIBB25
+	B25Decoder b25;
+#endif
 	stTsReaderArg()
 	{
 		StopTsRead = FALSE;

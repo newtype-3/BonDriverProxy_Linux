@@ -26,6 +26,9 @@
 #include <map>
 #include "typedef.h"
 #include "IBonDriver3.h"
+#ifdef HAVE_LIBARIBB25
+#include "B25Decoder.h"
+#endif
 
 #if __APPLE__
 #undef daemon
@@ -40,11 +43,11 @@ namespace BonDriverProxyEx {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-static char g_Host[256] = "127.0.0.1";
-static char g_Port[8] = "1192";
+static char g_Host[256];
+static char g_Port[8];
 static size_t g_PacketFifoSize = 64;
 static DWORD g_TsPacketBufSize = (188 * 1024);
-static DWORD g_OpenTunerRetDelay = 0;
+static DWORD g_OpenTunerRetDelay;				// デフォルト値は0
 static BOOL g_DisableUnloadBonDriver = TRUE;	// bdplの標準はTRUEにする
 
 #define MAX_DRIVERS	64		// ドライバのグループ数とグループ内の数の両方
@@ -74,6 +77,9 @@ struct stTsReaderArg {
 	std::list<cProxyServerEx *> TsReceiversList;
 	std::list<cProxyServerEx *> WaitExclusivePrivList;
 	cCriticalSection TsLock;
+#ifdef HAVE_LIBARIBB25
+	B25Decoder b25;
+#endif
 	stTsReaderArg()
 	{
 		StopTsRead = FALSE;
