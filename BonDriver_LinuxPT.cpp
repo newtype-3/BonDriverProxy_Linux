@@ -424,6 +424,9 @@ void cBonDriverLinuxPT::CloseTuner(void)
 		::close(m_fd);
 		m_bTuner = FALSE;
 		m_fd = -1;
+#ifdef HAVE_LIBARIB25
+		g_b25.release();
+#endif
 	}
 }
 

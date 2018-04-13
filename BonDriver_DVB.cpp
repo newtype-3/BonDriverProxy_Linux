@@ -531,6 +531,9 @@ void cBonDriverDVB::CloseTuner(void)
 		::close(m_fefd);
 		m_fefd = m_dmxfd = m_dvrfd = -1;
 		m_bTuner = FALSE;
+#ifdef HAVE_LIBARIB25
+		g_b25.release();
+#endif
 	}
 }
 
