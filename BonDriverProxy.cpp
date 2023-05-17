@@ -9,7 +9,6 @@ namespace BonDriverProxy {
 
 #define STRICT_LOCK
 
-#ifdef DEBUG
 static BOOL g_bStop;	// 初期値FALSE
 static void Handler(int sig)
 {
@@ -30,7 +29,6 @@ static void CleanUp()
 		}
 	}
 }
-#endif
 
 static int Init(int ac, char *av[])
 {
@@ -1296,10 +1294,9 @@ static int Listen(char *host, char *port)
 		csock = ::accept(lsock, (struct sockaddr *)&peer_sin, &len);
 		if (csock == INVALID_SOCKET)
 		{
-#ifdef DEBUG
 			if ((errno == EINTR) && g_bStop)
 				break;
-#endif
+
 			continue;
 		}
 
@@ -1345,14 +1342,6 @@ int main(int argc, char *argv[])
 		return 0;
 	}
 
-#ifndef DEBUG
-	if (daemon(1, 1))
-	{
-		perror("daemon");
-		return -1;
-	}
-#endif
-
 	struct sigaction sa;
 	memset(&sa, 0, sizeof(sa));
 	sa.sa_handler = SIG_IGN;
@@ -1362,22 +1351,19 @@ int main(int argc, char *argv[])
 		perror("sigaction1");
 		return -2;
 	}
-#ifdef DEBUG
+
 	sa.sa_handler = BonDriverProxy::Handler;
-	if (sigaction(SIGINT, &sa, NULL))
+	if (sigaction(SIGINT, &sa, NULL) || sigaction(SIGTERM, &sa, NULL))
 	{
-		perror("sigaction2");
+		perror("sigaction2 or 15");
 		return -3;
 	}
-#endif
 
 	int ret = BonDriverProxy::Listen(BonDriverProxy::g_Host, BonDriverProxy::g_Port);
 
-#ifdef DEBUG
 	BonDriverProxy::g_Lock.Enter();
 	BonDriverProxy::CleanUp();
 	BonDriverProxy::g_Lock.Leave();
-#endif
 
 	return ret;
 }
