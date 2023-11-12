@@ -147,8 +147,10 @@ cProxyServer::~cProxyServer()
 	::pthread_cond_destroy(&m_c);
 	::pthread_mutex_destroy(&m_m);
 
-	if (m_s != INVALID_SOCKET)
+	if (m_s != INVALID_SOCKET) {
+		::fprintf(stderr,"sock%d: disconnect\n", m_s);
 		::close(m_s);
+	}
 }
 
 void *cProxyServer::Reception(LPVOID pv)
@@ -231,6 +233,8 @@ DWORD cProxyServer::Process()
 			{
 			case eSelectBonDriver:
 			{
+				::fprintf(stderr, "sock%d: SelectBonDriver: [%s]\n", m_s, (LPCSTR)(pPh->m_pPacket->payload));
+
 				if (pPh->GetBodyLength() <= sizeof(char))
 					makePacket(eSelectBonDriver, FALSE);
 				else
@@ -332,6 +336,8 @@ DWORD cProxyServer::Process()
 
 			case eOpenTuner:
 			{
+				::fprintf(stderr, "sock%d: OpenTuner\n", m_s);
+
 				BOOL bFind = FALSE;
 				{
 #ifndef STRICT_LOCK
@@ -360,6 +366,8 @@ DWORD cProxyServer::Process()
 
 			case eCloseTuner:
 			{
+				::fprintf(stderr, "sock%d: CloseTuner\n", m_s);
+
 				BOOL bFind = FALSE;
 				{
 #ifndef STRICT_LOCK
@@ -512,6 +520,11 @@ DWORD cProxyServer::Process()
 
 			case eSetChannel2:
 			{
+				::fprintf(stderr, "sock%d: SetChannel: [%d, %d]\n",
+							m_s,
+							ntohl(*(DWORD *)(pPh->m_pPacket->payload)),
+							ntohl(*(DWORD *)(&(pPh->m_pPacket->payload[sizeof(DWORD)]))));
+
 				if (pPh->GetBodyLength() != ((sizeof(DWORD) * 2) + sizeof(BYTE)))
 					makePacket(eSetChannel2, (DWORD)0xff);
 				else
@@ -1220,7 +1233,10 @@ static int Listen(char *host, char *port)
 
 	for (;;)
 	{
-		csock = ::accept(lsock, NULL, NULL);
+		struct sockaddr_in peer_sin;
+		unsigned int len;
+		len = sizeof(peer_sin);
+		csock = ::accept(lsock, (struct sockaddr *)&peer_sin, &len);
 		if (csock == INVALID_SOCKET)
 		{
 #ifdef DEBUG
@@ -1229,6 +1245,15 @@ static int Listen(char *host, char *port)
 #endif
 			continue;
 		}
+
+		struct hostent *peer_host;
+		const char *h_name;
+		peer_host = gethostbyaddr((char *)&peer_sin.sin_addr.s_addr, sizeof(peer_sin.sin_addr), AF_INET);
+		if (peer_host == NULL)
+			h_name = "NONAME";
+		else
+			h_name = peer_host->h_name;
+		::fprintf(stderr,"sock%d: connect from: %s [%s] port %d\n", csock, h_name, inet_ntoa(peer_sin.sin_addr), ntohs(peer_sin.sin_port));
 
 		cProxyServer *pProxy = new cProxyServer();
 		pProxy->setSocket(csock);
