@@ -5,8 +5,10 @@
 
 namespace BonDriver_DVB {
 
-static char g_strSpace[32];
-static stChannel g_stChannels[2][MAX_CH];
+static std::unordered_map<DWORD, stSpace> g_strSpacesTable[2];
+static std::unordered_map<DWORD, stSpace> g_strSpaces;
+static std::unordered_map<DWORD, stChannel> g_stChannelsTable[2];
+static std::unordered_map<DWORD, stChannel> g_stChannels;
 static int g_AdapterNo;
 static int g_Type;			// 0 : ISDB_S / 1 : ISDB_T  <-  判定はm_fefdにioctl()かけるまで保留
 static int g_GetCnrMode;	// 0 : FE_READ_SIGNAL_STRENGTH / 1 : FE_READ_SNR / 2 : DTV_STAT_CNR
@@ -92,11 +94,6 @@ static int Init()
 	fp = ::fopen(buf, "r");
 	if (fp == NULL)
 		return -2;
-	for (int i = 0; i < MAX_CH; i++)
-	{
-		g_stChannels[0][i].bUnused = TRUE;
-		g_stChannels[1][i].bUnused = TRUE;
-	}
 
 	int idx = 0;
 	BOOL baFlag = FALSE;
@@ -225,10 +222,37 @@ static int Init()
 			b25flags.multi2round = 1;
 		}
 #endif
+		else if (buf[0] == '$')
+		{
+			char *cp[2];
+			BOOL bOk = FALSE;
+			p = buf;
+			cp[0] = ++p;
+			p = ::strchr(p, '\t');
+			if (p)
+			{
+				*p++ = '\0';
+				cp[1] = p;
+				bOk = TRUE;
+				p = ::strchr(p, '\t');
+				if (p)
+					*p = '\0';
+			}
+			if (bOk)
+			{
+				DWORD dwSpace = ::atoi(cp[1]);
+				if (Convert(cp[0], g_strSpacesTable[idx][dwSpace].strTuningSpace, MAX_CN_LEN) < 0)
+				{
+					::fclose(fp);
+					return -3;
+				}
+			}
+		}
 		else
 		{
 			int n = 0;
-			char *cp[5];
+			int tokenNum = 4 + (g_UseServiceID ? 1 : 0);
+			char *cp[6];
 			BOOL bOk = FALSE;
 			p = cp[n++] = buf;
 			while (1)
@@ -237,22 +261,14 @@ static int Init()
 				if (p)
 				{
 					*p++ = '\0';
-					cp[n++] = p;
-					if (g_UseServiceID)
+					if (n > tokenNum)
 					{
-						if (n > 4)
-						{
-							bOk = TRUE;
-							break;
-						}
+						break;
 					}
-					else
+					cp[n++] = p;
+					if (n > tokenNum)
 					{
-						if (n > 3)
-						{
-							bOk = TRUE;
-							break;
-						}
+						bOk = TRUE;
 					}
 				}
 				else
@@ -260,20 +276,18 @@ static int Init()
 			}
 			if (bOk)
 			{
-				DWORD dw = ::atoi(cp[1]);
-				if (dw < MAX_CH)
+				DWORD dwSpace = ::atoi(cp[1]);
+				DWORD dwChannel = ::atoi(cp[2]);
+				DWORD dwKey = dwSpace<<16 | dwChannel;
+				if (Convert(cp[0], g_stChannelsTable[idx][dwKey].strChName, MAX_CN_LEN) < 0)
 				{
-					if (Convert(cp[0], g_stChannels[idx][dw].strChName, MAX_CN_LEN) < 0)
-					{
-						::fclose(fp);
-						return -3;
-					}
-					g_stChannels[idx][dw].freq.frequencyno = ::atoi(cp[2]);
-					g_stChannels[idx][dw].freq.tsid = ::strtoul(cp[3], NULL, 16);
-					if (g_UseServiceID)
-						g_stChannels[idx][dw].ServiceID = ::strtoul(cp[4], NULL, 10);
-					g_stChannels[idx][dw].bUnused = FALSE;
+					::fclose(fp);
+					return -3;
 				}
+				g_stChannelsTable[idx][dwKey].freq.frequencyno = ::atoi(cp[3]);
+				g_stChannelsTable[idx][dwKey].freq.tsid = ::strtoul(cp[4], NULL, 0);
+				if (g_UseServiceID)
+					g_stChannelsTable[idx][dwKey].ServiceID = ::strtoul(cp[5], NULL, 10);
 			}
 		}
 	}
@@ -421,24 +435,21 @@ const BOOL cBonDriverDVB::OpenTuner(void)
 		goto err1;
 	}
 
-	char *p;
 	if (info.type == FE_QPSK)
 	{
 		g_Type = 0;
-		p = (char *)"BS/CS110";
 	}
 	else if (info.type == FE_OFDM)
 	{
 		g_Type = 1;
-		p = (char *)"UHF";
 	}
 	else
 	{
 		::fprintf(stderr, "OpenTuner() adapter type unknown: adapter%d\n", g_AdapterNo);
 		goto err1;
 	}
-	if (Convert(p, g_strSpace, sizeof(g_strSpace)) < 0)
-		goto err1;
+	g_strSpaces = g_strSpacesTable[g_Type];
+	g_stChannels = g_stChannelsTable[g_Type];
 
 	::sprintf(buf, "/dev/dvb/adapter%d/demux0", g_AdapterNo);
 	m_dmxfd = ::open(buf, O_RDONLY | O_CLOEXEC);
@@ -643,22 +654,21 @@ LPCTSTR cBonDriverDVB::EnumTuningSpace(const DWORD dwSpace)
 {
 	if (!m_bTuner)
 		return NULL;
-	if (dwSpace != 0)
+	auto ch = g_strSpaces.find(dwSpace);
+	if (ch == g_strSpaces.end())
 		return NULL;
-	return (LPCTSTR)g_strSpace;
+	return (LPCTSTR)(ch->second.strTuningSpace);
 }
 
 LPCTSTR cBonDriverDVB::EnumChannelName(const DWORD dwSpace, const DWORD dwChannel)
 {
 	if (!m_bTuner)
 		return NULL;
-	if (dwSpace != 0)
+	DWORD dwKey = dwSpace<<16 | dwChannel;
+	auto ch = g_stChannels.find(dwKey);
+	if (ch == g_stChannels.end())
 		return NULL;
-	if (dwChannel >= MAX_CH)
-		return NULL;
-	if (g_stChannels[g_Type][dwChannel].bUnused)
-		return NULL;
-	return (LPCTSTR)(g_stChannels[g_Type][dwChannel].strChName);
+	return (LPCTSTR)(ch->second.strChName);
 }
 
 // 経緯的にはDTV_ISDBS_TS_IDがDTV_STREAM_IDに置き換わり、その際にDTV_ISDBS_TS_ID_LEGACYが
@@ -670,13 +680,11 @@ LPCTSTR cBonDriverDVB::EnumChannelName(const DWORD dwSpace, const DWORD dwChanne
 const BOOL cBonDriverDVB::SetChannel(const DWORD dwSpace, const DWORD dwChannel)
 {
 	BOOL bFlag;
+	DWORD dwKey = dwSpace<<16 | dwChannel;
+	auto ch = g_stChannels.find(dwKey);
 	if (!m_bTuner)
 		goto err;
-	if (dwSpace != 0)
-		goto err;
-	if (dwChannel >= MAX_CH)
-		goto err;
-	if (g_stChannels[g_Type][dwChannel].bUnused)
+	if (ch == g_stChannels.end())
 		goto err;
 	if (dwChannel == m_dwChannel)
 		return TRUE;
@@ -686,14 +694,15 @@ const BOOL cBonDriverDVB::SetChannel(const DWORD dwSpace, const DWORD dwChannel)
 	{
 		if (m_dwChannel != 0x7fffffff)
 		{
-			if ((g_stChannels[g_Type][dwChannel].freq.frequencyno == g_stChannels[g_Type][m_dwChannel].freq.frequencyno) &&
-				(g_stChannels[g_Type][dwChannel].freq.tsid == g_stChannels[g_Type][m_dwChannel].freq.tsid))
+			DWORD dw = m_dwSpace<<16 | m_dwChannel;
+			if ((ch->second.freq.frequencyno == g_stChannels[dw].freq.frequencyno) &&
+				(ch->second.freq.tsid == g_stChannels[dw].freq.tsid))
 			{
 				bFlag = FALSE;
 			}
 		}
 		m_bChannelChanged = TRUE;
-		m_dwServiceID = g_stChannels[g_Type][dwChannel].ServiceID;
+		m_dwServiceID = ch->second.ServiceID;
 	}
 
 	if (bFlag)
@@ -704,18 +713,18 @@ const BOOL cBonDriverDVB::SetChannel(const DWORD dwSpace, const DWORD dwChannel)
 //		::memset(&props, 0, sizeof(props));
 		if (g_Type == 0)
 		{
-			f = GetFrequency_S(g_stChannels[g_Type][dwChannel].freq.frequencyno);
+			f = GetFrequency_S(ch->second.freq.frequencyno);
 			prop[0].cmd = DTV_FREQUENCY;
 			prop[0].u.data = f;
 			prop[1].cmd = DTV_STREAM_ID;
-			prop[1].u.data = g_stChannels[g_Type][dwChannel].freq.tsid;
+			prop[1].u.data = ch->second.freq.tsid;
 			prop[2].cmd = DTV_TUNE;
 			props.props = prop;
 			props.num = 3;
 		}
 		else
 		{
-			f = GetFrequency_T(g_stChannels[g_Type][dwChannel].freq.frequencyno);
+			f = GetFrequency_T(ch->second.freq.frequencyno);
 			prop[0].cmd = DTV_FREQUENCY;
 			prop[0].u.data = f;
 			prop[1].cmd = DTV_TUNE;

@@ -16,6 +16,7 @@
 #include <dlfcn.h>
 #include <pthread.h>
 #include <queue>
+#include <unordered_map>
 #include <linux/dvb/dmx.h>
 #include <linux/dvb/frontend.h>
 #include "typedef.h"
@@ -23,7 +24,6 @@
 
 namespace BonDriver_DVB {
 
-#define MAX_CH				128
 #define MAX_CN_LEN			64
 
 #define TS_SYNC_BYTE		0x47
@@ -50,11 +50,14 @@ struct stFrequency {
 	unsigned int tsid;
 };
 
+struct stSpace {
+	char strTuningSpace[MAX_CN_LEN];
+};
+
 struct stChannel {
 	char strChName[MAX_CN_LEN];
 	stFrequency freq;
 	DWORD ServiceID;	// WORDで良いんだけどアライメント入るとどうせ同じなので
-	BOOL bUnused;
 };
 
 class cBonDriverDVB : public IBonDriver2 {
