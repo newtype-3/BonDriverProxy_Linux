@@ -118,7 +118,8 @@ int main(int argc, char *argv[])
 	}
 
 	// ここから実質のチューナオープン & TS取得処理
-	BOOL b = pIBon->OpenTuner();
+	BOOL b;
+	b = pIBon->OpenTuner();
 	if (!b)
 	{
 		fprintf(stderr, "OpenTuner error\n");
@@ -129,7 +130,16 @@ int main(int argc, char *argv[])
 	}
 
 	// 指定チャンネルにセット
-	pIBon2->SetChannel(dwSpace, dwChannel);
+	b = pIBon2->SetChannel(dwSpace, dwChannel);
+	if (!b)
+	{
+		fprintf(stderr, "SetChannel error\n");
+		pIBon->CloseTuner();
+		pIBon->Release();
+		dlclose(hModule);
+		close(wfd);
+		return -3;
+	}
 
 	// 終了タイマー & 停止シグナル用ハンドラ登録
 	struct sigaction sa;
