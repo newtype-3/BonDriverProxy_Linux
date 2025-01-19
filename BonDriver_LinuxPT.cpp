@@ -6,8 +6,10 @@
 
 namespace BonDriver_LinuxPT {
 
-static char g_strSpace[32];
-static stChannel g_stChannels[2][MAX_CH];
+static std::unordered_map<DWORD, stSpace> g_strSpacesTable[2];
+static std::unordered_map<DWORD, stSpace> g_strSpaces;
+static std::unordered_map<DWORD, stChannel> g_stChannelsTable[2];
+static std::unordered_map<DWORD, stChannel> g_stChannels;
 static char g_Device[32];
 static int g_Type;		// 0 : ISDB_S / 1 : ISDB_T
 static BOOL g_MustStop;
@@ -92,11 +94,6 @@ static int Init()
 	fp = ::fopen(buf, "r");
 	if (fp == NULL)
 		return -2;
-	for (int i = 0; i < MAX_CH; i++)
-	{
-		g_stChannels[0][i].bUnused = TRUE;
-		g_stChannels[1][i].bUnused = TRUE;
-	}
 
 	int idx = 0;
 	BOOL bdFlag = FALSE;
@@ -149,15 +146,6 @@ static int Init()
 					g_MustStop = TRUE;
 				}
 				cBonDriverLinuxPT::m_sbPT = FALSE;
-			}
-			if (g_Type == 0)
-				p = (char *)"BS/CS110";
-			else
-				p = (char *)"UHF";
-			if (Convert(p, g_strSpace, sizeof(g_strSpace)) < 0)
-			{
-				::fclose(fp);
-				return -3;
 			}
 			bdFlag = TRUE;
 		}
@@ -244,10 +232,37 @@ static int Init()
 			b25flags.multi2round = 1;
 		}
 #endif
+		else if (buf[0] == '$')
+		{
+			char *cp[2];
+			BOOL bOk = FALSE;
+			p = buf;
+			cp[0] = ++p;
+			p = ::strchr(p, '\t');
+			if (p)
+			{
+				*p++ = '\0';
+				cp[1] = p;
+				bOk = TRUE;
+				p = ::strchr(p, '\t');
+				if (p)
+					*p = '\0';
+			}
+			if (bOk)
+			{
+				DWORD dwSpace = ::atoi(cp[1]);
+				if (Convert(cp[0], g_strSpacesTable[idx][dwSpace].strTuningSpace, MAX_CN_LEN) < 0)
+				{
+					::fclose(fp);
+					return -3;
+				}
+			}
+		}
 		else
 		{
 			int n = 0;
-			char *cp[5];
+			int tokenNum = 4 + (g_UseServiceID ? 1 : 0);
+			char *cp[6];
 			BOOL bOk = FALSE;
 			p = cp[n++] = buf;
 			while (1)
@@ -256,22 +271,14 @@ static int Init()
 				if (p)
 				{
 					*p++ = '\0';
-					cp[n++] = p;
-					if (g_UseServiceID)
+					if (n > tokenNum)
 					{
-						if (n > 4)
-						{
-							bOk = TRUE;
-							break;
-						}
+						break;
 					}
-					else
+					cp[n++] = p;
+					if (n > tokenNum)
 					{
-						if (n > 3)
-						{
-							bOk = TRUE;
-							break;
-						}
+						bOk = TRUE;
 					}
 				}
 				else
@@ -279,24 +286,24 @@ static int Init()
 			}
 			if (bOk)
 			{
-				DWORD dw = ::atoi(cp[1]);
-				if (dw < MAX_CH)
+				DWORD dwSpace = ::atoi(cp[1]);
+				DWORD dwChannel = ::atoi(cp[2]);
+				DWORD dwKey = dwSpace<<16 | dwChannel;
+				if (Convert(cp[0], g_stChannelsTable[idx][dwKey].strChName, MAX_CN_LEN) < 0)
 				{
-					if (Convert(cp[0], g_stChannels[idx][dw].strChName, MAX_CN_LEN) < 0)
-					{
-						::fclose(fp);
-						return -4;
-					}
-					g_stChannels[idx][dw].freq.frequencyno = ::atoi(cp[2]);
-					g_stChannels[idx][dw].freq.slot = ::atoi(cp[3]);
-					if (g_UseServiceID)
-						g_stChannels[idx][dw].ServiceID = ::strtoul(cp[4], NULL, 10);
-					g_stChannels[idx][dw].bUnused = FALSE;
+					::fclose(fp);
+					return -4;
 				}
+				g_stChannelsTable[idx][dwKey].freq.frequencyno = ::atoi(cp[3]);
+				g_stChannelsTable[idx][dwKey].freq.slot = ::strtoul(cp[4], NULL, 0);
+				if (g_UseServiceID)
+					g_stChannelsTable[idx][dwKey].ServiceID = ::strtoul(cp[5], NULL, 10);
 			}
 		}
 	}
 	::fclose(fp);
+	g_strSpaces = g_strSpacesTable[g_Type];
+	g_stChannels = g_stChannelsTable[g_Type];
 	if (g_UseServiceID)
 		InitCrc32Table();
 	return 0;
@@ -534,32 +541,29 @@ const BOOL cBonDriverLinuxPT::IsTunerOpening(void)
 
 LPCTSTR cBonDriverLinuxPT::EnumTuningSpace(const DWORD dwSpace)
 {
-	if (dwSpace != 0)
+	auto ch = g_strSpaces.find(dwSpace);
+	if (ch == g_strSpaces.end())
 		return NULL;
-	return (LPCTSTR)g_strSpace;
+	return (LPCTSTR)(ch->second.strTuningSpace);
 }
 
 LPCTSTR cBonDriverLinuxPT::EnumChannelName(const DWORD dwSpace, const DWORD dwChannel)
 {
-	if (dwSpace != 0)
+	DWORD dwKey = dwSpace<<16 | dwChannel;
+	auto ch = g_stChannels.find(dwKey);
+	if (ch == g_stChannels.end())
 		return NULL;
-	if (dwChannel >= MAX_CH)
-		return NULL;
-	if (g_stChannels[g_Type][dwChannel].bUnused)
-		return NULL;
-	return (LPCTSTR)(g_stChannels[g_Type][dwChannel].strChName);
+	return (LPCTSTR)(ch->second.strChName);
 }
 
 const BOOL cBonDriverLinuxPT::SetChannel(const DWORD dwSpace, const DWORD dwChannel)
 {
 	BOOL bFlag;
+	DWORD dwKey = dwSpace<<16 | dwChannel;
+	auto ch = g_stChannels.find(dwKey);
 	if (!m_bTuner)
 		goto err;
-	if (dwSpace != 0)
-		goto err;
-	if (dwChannel >= MAX_CH)
-		goto err;
-	if (g_stChannels[g_Type][dwChannel].bUnused)
+	if (ch == g_stChannels.end())
 		goto err;
 	if (dwChannel == m_dwChannel)
 		return TRUE;
@@ -569,14 +573,15 @@ const BOOL cBonDriverLinuxPT::SetChannel(const DWORD dwSpace, const DWORD dwChan
 	{
 		if (m_dwChannel != 0x7fffffff)
 		{
-			if ((g_stChannels[g_Type][dwChannel].freq.frequencyno == g_stChannels[g_Type][m_dwChannel].freq.frequencyno) &&
-				(g_stChannels[g_Type][dwChannel].freq.slot == g_stChannels[g_Type][m_dwChannel].freq.slot))
+			DWORD dw = m_dwSpace<<16 | m_dwChannel;
+			if ((ch->second.freq.frequencyno == g_stChannels[dw].freq.frequencyno) &&
+				(ch->second.freq.slot == g_stChannels[dw].freq.slot))
 			{
 				bFlag = FALSE;
 			}
 		}
 		m_bChannelChanged = TRUE;
-		m_dwServiceID = g_stChannels[g_Type][dwChannel].ServiceID;
+		m_dwServiceID = ch->second.ServiceID;
 	}
 
 	if (bFlag)
@@ -588,7 +593,7 @@ const BOOL cBonDriverLinuxPT::SetChannel(const DWORD dwSpace, const DWORD dwChan
 			m_hTsRead = 0;
 			::ioctl(m_fd, STOP_REC, 0);
 		}
-		if (::ioctl(m_fd, SET_CHANNEL, &(g_stChannels[g_Type][dwChannel].freq)) < 0)
+		if (::ioctl(m_fd, SET_CHANNEL, &(ch->second.freq)) < 0)
 		{
 			::fprintf(stderr, "SetChannel() ioctl(SET_CHANNEL) error: %s\n", g_Device);
 			goto err;

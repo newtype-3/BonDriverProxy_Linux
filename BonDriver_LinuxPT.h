@@ -14,13 +14,13 @@
 #include <dlfcn.h>
 #include <pthread.h>
 #include <queue>
+#include <unordered_map>
 #include "typedef.h"
 #include "IBonDriver2.h"
 #include "pt1_ioctl.h"
 
 namespace BonDriver_LinuxPT {
 
-#define MAX_CH				128
 #define MAX_CN_LEN			64
 
 #define TS_PKTSIZE			188
@@ -37,11 +37,14 @@ static const size_t g_TsFifoSize = TS_FIFOSIZE;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct stSpace {
+	char strTuningSpace[MAX_CN_LEN];
+};
+
 struct stChannel {
 	char strChName[MAX_CN_LEN];
 	FREQUENCY freq;
 	DWORD ServiceID;	// WORDで良いんだけどアライメント入るとどうせ同じなので
-	BOOL bUnused;
 };
 
 class cBonDriverLinuxPT : public IBonDriver2 {
