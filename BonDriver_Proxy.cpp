@@ -38,10 +38,10 @@ static int Init()
 	if (fp == NULL)
 		return -2;
 
-	BOOL bHost, bPort, bBonDriver, bChannelLock, bConnectTimeOut, bUseMagicPacket;
+	BOOL bHost, bPort, bBonDriver, bChannelLock, bConnectTimeOut, bUseMagicPacket, bDesireToUseB25;
 	BOOL bTargetHost, bTargetPort, bTargetMac;
 	BOOL bPacketFifoSize, bTsFifoSize, bTsPacketBufSize;
-	bHost = bPort = bBonDriver = bChannelLock = bConnectTimeOut = bUseMagicPacket = FALSE;
+	bHost = bPort = bBonDriver = bChannelLock = bConnectTimeOut = bUseMagicPacket = bDesireToUseB25 = FALSE;
 	bTargetHost = bTargetPort = bTargetMac = FALSE;
 	bPacketFifoSize = bTsFifoSize = bTsPacketBufSize = FALSE;
 	while (::fgets(buf, sizeof(buf), fp))
@@ -85,6 +85,11 @@ static int Init()
 		{
 			g_UseMagicPacket = ::atoi(p);
 			bUseMagicPacket = TRUE;
+		}
+		else if (!bDesireToUseB25 && IsTagMatch(buf, "B25", &p))
+		{
+			g_DesireToUseB25 = ::atoi(p);
+			bDesireToUseB25 = TRUE;
 		}
 		else if (!bTargetHost && IsTagMatch(buf, "TARGET_ADDRESS", &p))
 		{
@@ -547,7 +552,8 @@ void cProxyClient::makePacket(enumCommand eCmd, DWORD dw1, DWORD dw2)
 
 void cProxyClient::makePacket(enumCommand eCmd, DWORD dw1, DWORD dw2, BYTE b)
 {
-	cPacketHolder *p = new cPacketHolder(eCmd, (sizeof(DWORD) * 2) + sizeof(BYTE));
+	enumOption eOpt = g_DesireToUseB25 ? eDesireToUseB25 : eNoOption;
+	cPacketHolder *p = new cPacketHolder(eCmd, (sizeof(DWORD) * 2) + sizeof(BYTE), eOpt);
 	DWORD *pos = (DWORD *)(p->m_pPacket->payload);
 	*pos++ = htonl(dw1);
 	*pos++ = htonl(dw2);
