@@ -33,6 +33,7 @@ static size_t g_TsFifoSize = 64;
 static DWORD g_TsPacketBufSize = (188 * 1024);
 static int g_ConnectTimeOut = 5;
 static BOOL g_UseMagicPacket;
+static BOOL g_DesireToUseB25;
 static char g_TargetMac[6];
 static char g_TargetHost[MAX_HOST_LEN];
 static char g_TargetPort[MAX_PORT_LEN];
