@@ -1123,7 +1123,7 @@ DWORD cProxyServerEx::Process()
 						port = 0;
 					}
 					std::vector<stDriver> &vstDriver = DriversMap[(*it)->m_pDriversMapKey];
-					len = ::sprintf(buf, "%02d: [%s]:[%d] / [%s][%s] / space[%u] ch[%u]\n", num, addr, port, (*it)->m_pDriversMapKey, vstDriver[(*it)->m_iDriverNo].strBonDriver, (*it)->m_dwSpace, (*it)->m_dwChannel);
+					len = ::sprintf(buf, "%02d: [%s]:[%d] / [%s][%s] / space[%u] ch[%u] / Lock[%d]\n", num, addr, port, (*it)->m_pDriversMapKey, vstDriver[(*it)->m_iDriverNo].strBonDriver, (*it)->m_dwSpace, (*it)->m_dwChannel, (*it)->m_bChannelLock);
 					if ((size_t)len >= left)
 					{
 						left += size;
