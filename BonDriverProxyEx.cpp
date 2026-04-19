@@ -207,7 +207,6 @@ static int Init(int ac, char *av[])
 			tag[0] = (char)('0' + (num / 10));
 			tag[1] = (char)('0' + (num % 10));
 			tag[2] = '\0';
-			num++;
 			if (IsTagMatch(buf, tag, &p))
 			{
 				// format: GroupName;BonDriver1;BonDriver2;BonDriver3...
@@ -244,6 +243,7 @@ static int Init(int ac, char *av[])
 					vstDriver[i-1].bUsed = FALSE;
 				}
 				DriversMap[ppDriver[0]] = vstDriver;
+				num++;
 			}
 		}
 	}
