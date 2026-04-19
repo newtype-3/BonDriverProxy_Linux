@@ -507,7 +507,7 @@ const BOOL cBonDriverLinuxPT::GetTsStream(BYTE **ppDst, DWORD *pdwSize, DWORD *p
 		}
 	}
 #ifdef HAVE_LIBARIBB25
-	if (b)
+	if (b && g_b25_enable)
 		g_b25.decode(*ppDst, *pdwSize, ppDst, pdwSize);
 #endif
 	return b;
@@ -599,7 +599,8 @@ const BOOL cBonDriverLinuxPT::SetChannel(const DWORD dwSpace, const DWORD dwChan
 			goto err;
 		}
 #ifdef HAVE_LIBARIBB25
- 		g_b25.reset();
+		if (g_b25_enable)
+ 			g_b25.reset();
 #endif
 	}
 

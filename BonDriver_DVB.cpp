@@ -618,7 +618,7 @@ const BOOL cBonDriverDVB::GetTsStream(BYTE **ppDst, DWORD *pdwSize, DWORD *pdwRe
 		}
 	}
 #ifdef HAVE_LIBARIBB25
-	if (b)
+	if (b && g_b25_enable)
 		g_b25.decode(*ppDst, *pdwSize, ppDst, pdwSize);
 #endif
 	return b;
@@ -780,7 +780,8 @@ const BOOL cBonDriverDVB::SetChannel(const DWORD dwSpace, const DWORD dwChannel)
 		}
 	}
 #ifdef HAVE_LIBARIBB25
-	g_b25.reset();
+	if (g_b25_enable)
+		g_b25.reset();
 #endif
 
 	m_dwSpace = dwSpace;
